@@ -8,3 +8,5 @@ mv mockserver docker/
 
 sudo docker build docker -t brainlounge/istiomock -t gcr.io/thelounge-lab/istiomock
 sudo gcloud docker -- push gcr.io/thelounge-lab/istiomock
+
+istioctl kube-inject -f kubernetes/mock-pod.yaml >kubernetes/mock-pod-with-sidecar.yaml
