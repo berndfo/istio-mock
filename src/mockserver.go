@@ -47,6 +47,11 @@ func formatRequest(r *http.Request) []string {
 func (h *allHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	uri := r.RequestURI
 
+	if uri == "/health" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	responseMessage := fmt.Sprintf("request '%v' succeeded.", uri)
 
 	response := responseInfo{
