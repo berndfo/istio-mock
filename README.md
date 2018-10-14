@@ -32,3 +32,7 @@ kubectl config set-context $(kubectl config current-context) --namespace mock-1
 # create mock service + pods
 kubectl apply -f kubernetes/mock-pod-with-sidecar.yaml
 kubectl apply -f kubernetes/mock-service.yaml
+
+# example 
+
+http://localhost:8080/@localhost/@localhost/@localhost|localhost|localhost|localhost|localhost/someservice
