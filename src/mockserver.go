@@ -1,14 +1,14 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
+	"log"
 	"time"
-	"sync"
+	"encoding/json"
 	"net/url"
+	"sync"
 )
 
 type allHandler struct{}
@@ -46,6 +46,12 @@ func formatRequest(r *http.Request) []string {
 	return request
 }
 
+/*
+ ServeHTTP handles a mock-server request. the URI determines if a forward cascade of services is called or the request
+ is simply returned. the uri "/health" is an exception, and can be used as a health check for the service. 
+ any other expression until the first "/" in the URI is interpreted as a command and handled by executeCommand()
+ 
+ */
 func (h *allHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	uri := r.RequestURI
 	
@@ -77,12 +83,44 @@ func (h *allHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write(b)
 	w.WriteHeader(http.StatusOK)
+	w.Write(b)
 }
+
+func isCommand(uri string) bool {
+	return strings.HasPrefix(uri, "@")
+}
+
+/*
+ executeCommand treats everything until the first "/" in the uri as the command. the remainder is taken unchanged and in 
+ most cases used as the new URI for forward service calls.
+ currently, any other command not starting with "@" is not understood and treated as an error.
+
+ commands starting with a "@" are treated as forward service calls. 
+ this is how they work:
+ everything after "@" is used to make the calls. the simplest case are commands like "@myservice" or "myservice:8080" 
+ where on service is called. in both cases, a HTTP request to these destinations is made.
+
+ however, to support sequential and parallel calls, pipes and commas are treated specially. 
+ example: "@service1|service2" - service1 and service2 get called in parallel
+ example: "@service1,service2" - service1 and service2 get called sequentially 
+
+ any number of pipes and commas can be used. 
+ for a mix of pipes and commas, pipes take precedence over commas. that means, all parallel calls are set up, with 
+ sequences of services within these parallel flows.
+ example: "@service1,service2|service3|service4,service5|" - service2 is executed after service1 returns. service5 is 
+ executed after service4 returns. both sequences (1+2 and 4+5) together with a one-call sequence for service3 are 
+ executed in parallel.  
+
+ in all cases, all forward services are called with the remainder of the original URI as the new request URI.
+ example: "@service1|service2,service3/newuriforallservices" leeds to 3 calls:
+ 1. "service1:8080/newuriforallservices"
+ 2.1. "service2:8080/newuriforallservices" 
+ 2.2. "service3:8080/newuriforallservices" 
+ */
 func executeCommand(uri string, originalRequest *http.Request) {
-	if len(uri) == 0 {
-		log.Println("no command")
+	if len(uri) == 0 || uri == "/" {
+		log.Printf("empty command in %q", uri)
 		return
 	}
 	
@@ -101,6 +139,11 @@ func executeCommand(uri string, originalRequest *http.Request) {
 		log.Printf("failed to unescape %q: %s", err)
 	}
 	
+	if !isCommand(cmdRaw) {
+		log.Printf("no command in %q", cmdRaw)
+		return
+	}
+
 	log.Printf("received cmd %q, with uri remainder %q", cmdRaw, uriRemainder)
 	
 	if len(cmdRaw) == 0 {
@@ -119,30 +162,59 @@ func executeCommand(uri string, originalRequest *http.Request) {
 
 func executeParallelForwards(cmdForward string, uriRemainder string) {
 	parallelServices := strings.Split(cmdForward, "|")
+	numParaForwards := len(parallelServices)
+	log.Printf("calling %d services in parallel: %s", numParaForwards, strings.Join(parallelServices, ", "))
+
 	waitGroup := sync.WaitGroup{}
-	for idx, forwardService := range parallelServices {
+	for idx, forwardServiceList := range parallelServices {
 		waitGroup.Add(1)
-		go func(idx int, forwardService string) {
+		go func(idxParallel int, serviceList string) {
 			defer waitGroup.Done()
 
-			forwardUrl := "http://" + forwardService + ":8080" + uriRemainder
-			log.Printf("calling %d. service %q, url %q", idx+1, forwardService, forwardUrl)
-
-			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("calling %d. service %q failed with panic, url %q", idx+1, forwardService, forwardUrl)
-				}
-			}()
-
-			resp, err := http.Get(forwardUrl)
-			if err != nil {
-				log.Printf("failure calling service %q, %q", forwardUrl, err)
+			sequentialForwards := strings.Split(serviceList, ",")
+			if len(sequentialForwards) > 1 {
+				executeSequentialForwards(sequentialForwards, idxParallel, uriRemainder)
+			} else {
+				idxDisplay := fmt.Sprintf("%d", (idxParallel + 1))
+				executeForward(sequentialForwards[0], uriRemainder, idxDisplay)
 			}
-			log.Printf("success calling service %q, status = %s", forwardService, resp.Status)
-		}(idx, forwardService)
+		}(idx, forwardServiceList)
 	}
 	waitGroup.Wait()
-	log.Printf("all %d parallel forwards finished", len(parallelServices))
+	if numParaForwards > 1 {
+		log.Printf("all %d parallel forwards finished", numParaForwards)
+	}
+}
+
+func executeSequentialForwards(sequentialForwards []string, idxParallel int, uriRemainder string) {
+	numSeqForwards := len(sequentialForwards)
+	log.Printf("calling %d services sequentially: %s", numSeqForwards, strings.Join(sequentialForwards, ", "))
+	for idxSeq, forwardService := range sequentialForwards {
+		idxDisplay := fmt.Sprintf("%d.%d", (idxParallel + 1), (idxSeq + 1))
+		executeForward(forwardService, uriRemainder, idxDisplay)
+	}
+	log.Printf("all %d sequential forwards finished", numSeqForwards)
+}
+
+func executeForward(forwardService string, uriRemainder string, indexDisplay string) {
+	if !strings.Contains(forwardService, ":") {
+		forwardService = forwardService + ":8080"
+	}
+	if (!strings.HasPrefix(uriRemainder, "/")) {
+		uriRemainder = "/" + uriRemainder
+	}
+	forwardUrl := "http://" + forwardService + uriRemainder
+	log.Printf("calling %s. service %q, url %q", indexDisplay, forwardService, forwardUrl)
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("calling %s. service %q failed with panic, url %q", indexDisplay, forwardService, forwardUrl)
+		}
+	}()
+	resp, err := http.Get(forwardUrl)
+	if err != nil {
+		log.Printf("failure calling service %q, %q", forwardUrl, err)
+	}
+	log.Printf("success calling service %q, status = %s", forwardService, resp.Status)
 }
 
 func main() {
