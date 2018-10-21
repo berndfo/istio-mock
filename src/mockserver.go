@@ -9,15 +9,27 @@ import (
 	"encoding/json"
 	"net/url"
 	"sync"
+	"bytes"
 )
 
 type allHandler struct{}
 
-type responseInfo struct {
-	ReceivedDate string
-	Message      string
-	RequestInfo  []string
+type ForwardInfo struct {
+	Url string
+	Result string
 }
+
+type ForwardInfos struct {
+	SequentialForwards []ForwardInfo
+}
+
+type responseInfo struct {
+	ReceivedDate     string
+	Message          string
+	ParallelForwards []ForwardInfos
+	RequestInfo      []string
+}
+
 
 // formatRequest generates ascii representation of a request
 func formatRequest(r *http.Request) []string {
@@ -54,7 +66,7 @@ func formatRequest(r *http.Request) []string {
  */
 func (h *allHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	uri := r.RequestURI
-	
+
 	log.Printf("request received with URI %q", uri)
 
 	if uri == "/health" {
@@ -63,20 +75,26 @@ func (h *allHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	uri = strings.TrimPrefix(uri, "/")
-	
-	executeCommand(uri, r)
-	
-	time.Sleep(time.Duration(300*time.Millisecond))
-	
+
+	forwardInfos := executeCommand(uri, r)
+
+	time.Sleep(time.Duration(300 * time.Millisecond))
+
 	responseMessage := fmt.Sprintf("request '%v' succeeded.", uri)
 
 	response := responseInfo{
-		ReceivedDate: time.Now().Format(time.RFC3339Nano),
-		Message:      responseMessage,
-		RequestInfo:  formatRequest(r),
+		ReceivedDate:     time.Now().Format(time.RFC3339Nano),
+		Message:          responseMessage,
+		ParallelForwards: forwardInfos,
+		RequestInfo:      formatRequest(r),
 	}
 
-	b, err := json.Marshal(response)
+	reponseJson, err := json.Marshal(response)
+
+	var jsonIndented bytes.Buffer
+	_ = json.Indent(&jsonIndented, reponseJson, "", "\t")
+	reponseJson = jsonIndented.Bytes()
+
 	if err != nil {
 		fmt.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -84,7 +102,7 @@ func (h *allHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
-	w.Write(b)
+	w.Write(reponseJson)
 }
 
 func isCommand(uri string) bool {
@@ -118,18 +136,19 @@ func isCommand(uri string) bool {
  2.1. "service2:8080/newuriforallservices" 
  2.2. "service3:8080/newuriforallservices" 
  */
-func executeCommand(uri string, originalRequest *http.Request) {
+func executeCommand(uri string, originalRequest *http.Request) (forwards []ForwardInfos) {
+	
 	if len(uri) == 0 || uri == "/" {
 		log.Printf("empty command in %q", uri)
 		return
 	}
-	
-	cmdRaw := uri 
+
+	cmdRaw := uri
 	uriRemainder := "/"
-	
+
 	cmdEndIdx := strings.Index(uri, "/")
 	if cmdEndIdx >= 0 {
-		cmdRaw = uri[:cmdEndIdx] 
+		cmdRaw = uri[:cmdEndIdx]
 		uriRemainder = uri[cmdEndIdx:]
 	}
 
@@ -138,65 +157,92 @@ func executeCommand(uri string, originalRequest *http.Request) {
 	if err != nil {
 		log.Printf("failed to unescape %q: %s", err)
 	}
-	
+
 	if !isCommand(cmdRaw) {
 		log.Printf("no command in %q", cmdRaw)
 		return
 	}
 
 	log.Printf("received cmd %q, with uri remainder %q", cmdRaw, uriRemainder)
-	
+
 	if len(cmdRaw) == 0 {
 		log.Printf("syntax error: command is empty")
 		return
 	}
-	
+
 	if strings.HasPrefix(cmdRaw, "@") && len(cmdRaw) > 1 {
 		cmdForward := strings.TrimPrefix(cmdRaw, "@")
-		executeParallelForwards(cmdForward, uriRemainder)
+		forwards = executeParallelForwards(cmdForward, uriRemainder)
 	} else {
 		log.Printf("syntax error: unknown command %q", cmdRaw)
 	}
-
+	return
 }
 
-func executeParallelForwards(cmdForward string, uriRemainder string) {
+func executeParallelForwards(cmdForward string, uriRemainder string) (parallelForwards []ForwardInfos) {
 	parallelServices := strings.Split(cmdForward, "|")
 	numParaForwards := len(parallelServices)
 	log.Printf("calling %d services in parallel: %s", numParaForwards, strings.Join(parallelServices, ", "))
 
+	parallelForwards = make([]ForwardInfos, 0)
+	
+	forwardReceiver := make(chan *ForwardInfos)
+	go func() {
+		// collect all results from parallel, concurrent calls
+		for {
+			select {
+			case forwardsInfos := <-forwardReceiver:
+				if forwardsInfos == nil {
+					return
+				} else {
+					parallelForwards = append(parallelForwards, *forwardsInfos)
+				}
+			}
+		}
+	}()
+	
 	waitGroup := sync.WaitGroup{}
+	// go through all parallel, concurrently called services...
 	for idx, forwardServiceList := range parallelServices {
 		waitGroup.Add(1)
+		// ...and branch off a go func for each service.
 		go func(idxParallel int, serviceList string) {
 			defer waitGroup.Done()
 
+			infos := ForwardInfos{}
+			
 			sequentialForwards := strings.Split(serviceList, ",")
 			if len(sequentialForwards) > 1 {
-				executeSequentialForwards(sequentialForwards, idxParallel, uriRemainder)
+				infos.SequentialForwards = executeSequentialForwards(sequentialForwards, idxParallel, uriRemainder)
 			} else {
 				idxDisplay := fmt.Sprintf("%d", (idxParallel + 1))
-				executeForward(sequentialForwards[0], uriRemainder, idxDisplay)
+				info := executeForward(sequentialForwards[0], uriRemainder, idxDisplay)
+				infos.SequentialForwards = []ForwardInfo {info}
 			}
+			forwardReceiver<-&infos
 		}(idx, forwardServiceList)
 	}
 	waitGroup.Wait()
+	forwardReceiver <- nil
 	if numParaForwards > 1 {
 		log.Printf("all %d parallel forwards finished", numParaForwards)
 	}
+	return
 }
 
-func executeSequentialForwards(sequentialForwards []string, idxParallel int, uriRemainder string) {
+func executeSequentialForwards(sequentialForwards []string, idxParallel int, uriRemainder string) (infos []ForwardInfo) {
 	numSeqForwards := len(sequentialForwards)
+	infos = make([]ForwardInfo, numSeqForwards)
 	log.Printf("calling %d services sequentially: %s", numSeqForwards, strings.Join(sequentialForwards, ", "))
 	for idxSeq, forwardService := range sequentialForwards {
 		idxDisplay := fmt.Sprintf("%d.%d", (idxParallel + 1), (idxSeq + 1))
-		executeForward(forwardService, uriRemainder, idxDisplay)
+		infos[idxSeq] = executeForward(forwardService, uriRemainder, idxDisplay)
 	}
 	log.Printf("all %d sequential forwards finished", numSeqForwards)
+	return
 }
 
-func executeForward(forwardService string, uriRemainder string, indexDisplay string) {
+func executeForward(forwardService string, uriRemainder string, indexDisplay string) (forwardInfo ForwardInfo) {
 	if !strings.Contains(forwardService, ":") {
 		forwardService = forwardService + ":8080"
 	}
@@ -204,17 +250,26 @@ func executeForward(forwardService string, uriRemainder string, indexDisplay str
 		uriRemainder = "/" + uriRemainder
 	}
 	forwardUrl := "http://" + forwardService + uriRemainder
+	forwardInfo.Url = forwardUrl
 	log.Printf("calling %s. service %q, url %q", indexDisplay, forwardService, forwardUrl)
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("calling %s. service %q failed with panic, url %q", indexDisplay, forwardService, forwardUrl)
+			panicMsg := fmt.Sprintf("calling %s. service %q failed with panic, url %q", indexDisplay, forwardService, forwardUrl)
+			forwardInfo.Result = panicMsg
+			log.Printf(panicMsg)
 		}
 	}()
 	resp, err := http.Get(forwardUrl)
 	if err != nil {
-		log.Printf("failure calling service %q, %q", forwardUrl, err)
+		errMsg := fmt.Sprintf("failure calling service %q, %q", forwardUrl, err)
+		log.Printf(errMsg)
+		forwardInfo.Result = errMsg
+	} else {
+		msg := fmt.Sprintf("success calling service %q, status = %s", forwardService, resp.Status)
+		log.Printf(msg)
+		forwardInfo.Result = msg
 	}
-	log.Printf("success calling service %q, status = %s", forwardService, resp.Status)
+	return
 }
 
 func main() {

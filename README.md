@@ -59,7 +59,7 @@ these tools should now be available in your local browser via http://localhost:8
 # create mock env within kubernetes aka new namespace
 ` kubectl create namespace mock-1 `
 
-# make 
+# make new namespace current, can ommit explicit `--namespace` for next commands  
 ` kubectl config set-context $(kubectl config current-context) --namespace mock-1 `
 
 # create the mock services you need
