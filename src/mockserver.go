@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"sync"
 	"bytes"
+	"flag"
 )
 
 type allHandler struct{}
@@ -223,7 +224,7 @@ func executeParallelForwards(cmdForward string, uriRemainder string) (parallelFo
 		}(idx, forwardServiceList)
 	}
 	waitGroup.Wait()
-	forwardReceiver <- nil
+	forwardReceiver <- nil // end result-collecting process
 	if numParaForwards > 1 {
 		log.Printf("all %d parallel forwards finished", numParaForwards)
 	}
@@ -273,14 +274,18 @@ func executeForward(forwardService string, uriRemainder string, indexDisplay str
 }
 
 func main() {
+
+	var listenAddress = flag.String("listenAddress", "0.0.0.0:8080", "the listen address of this service instance. defaults to '0.0.0.0:8080', but for example ':8443' or '0.0.0.0:8081' are valid, too.")
+
+	flag.Parse()
+	
 	s := &http.Server{
-		Addr:           ":8080",
+		Addr:           *listenAddress,
 		Handler:        &allHandler{},
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
 		MaxHeaderBytes: 1 << 20,
 	}
-	log.Println("mock server listening on 8080")
+	log.Printf("mock server listening on %q", (*listenAddress))
 	log.Fatal(s.ListenAndServe())
-
 }
