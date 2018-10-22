@@ -61,7 +61,7 @@ it will be fetch from Docker Hub, if not already present.
 
 ## Mocking a Service Mesh on Kubernetes and Istio
 
-Now we come to the interesting part. It shows how to create a set of services and call them.
+Now we get to the interesting part. It shows how to create a set of services and call them.
 
 ### Acquire a Kubernetes cluster on Google Cloud
 
@@ -82,6 +82,7 @@ Grant local user full cluster access on the cluster:
 After extraction, change into the Istio base directory, then deploy Istio into your Kubernetes cluster:
 
 ` cd install/kubernetes `
+
 ` kubectl apply -f istio-demo.yaml `
 
 Wait for Istio to come up, it can take a while: 
@@ -94,7 +95,7 @@ Expose the Grafana tool, which is part of the Istio deployment
 
 Expose the Service Graph, which is also part of this Istio deployment:
 
-` kubectl port-forward --namespace istio-system $(kubectl get pod --namespace istio-system --selector="app=servicegraph" --output jsonpath='{.items[0].metadata.name}') 8092:8088 / `
+` kubectl port-forward --namespace istio-system $(kubectl get pod --namespace istio-system --selector="app=servicegraph" --output jsonpath='{.items[0].metadata.name}') 8092:8088 & `
 
 These tools should now be available in your local browser via http://localhost:8091 or http://localhost:8092/force/forcegraph.html respectively.
 
@@ -142,11 +143,9 @@ You can watch this on the command line like this (needs installation of `watch` 
 
 ### Make entry service accessible from outside
 
-To reach the services, at least one of them must be made available using a local port forward
+To reach the services, at least one of them must be made available using a local port forward like this (example for namespace `mock-1`, service name `service1`):
 
 ` kubectl port-forward --namespace mock-1 $(kubectl get pod --namespace mock-1 --selector="app=service1" --output jsonpath='{.items[0].metadata.name}') 8080:8080 `
-
-curl 
 
 ` curl localhost:8080/ `
 
