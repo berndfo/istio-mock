@@ -57,7 +57,7 @@ The container image can run directly:
 ` docker run -ti  -p8089:8080 brainlounge/servicemock `
 
 The service is exposed locally on port 8089.
-it will be fetch from Docker Hub, if not already present. 
+it will be fetched from Docker Hub, if not already present. 
 
 ## Mocking a Service Mesh on Kubernetes and Istio
 
@@ -109,19 +109,19 @@ Create mock env within kubernetes aka new namespace:
 
 ` kubectl create namespace mock-1 `
 
-Make new namespace current, so we can ommit explicit `--namespace` parameters for commands from now on.
+Make new namespace current, so we can omit explicit `--namespace` parameters for commands from now on.
   
 ` kubectl config set-context $(kubectl config current-context) --namespace mock-1 `
 
 ### Create the mock services you need
 
-`mock-service-pod.yaml` is a template for creating any number of services. All those services differ _in name only_, their runtime is the exactly same container. This way, they are actually distinct deployments and can be addressed by other services by name. They can then be meshed together.
+`mock-service-pod.yaml` is a template for creating any number of services. All those services differ _in name only_, their runtime is exactly the same container. This way, they are actually distinct deployments and can be addressed by other services by name. They can then be meshed together.
 
 ` sed 's/${istiomock}/service1/' kubernetes/mock-service-pod.yaml >kubernetes/service1-deployment.yaml `
 
 Repeat the above for more services, replace "service1" (2 times) in the above command line with the name of your service.
 
-Of course you can adopt some parametrization in this file like the number of replicas.
+Of course, you can adopt some parametrization in this file like the number of replicas.
 
 ### Make them Istio-ready
 Services handled by Istio require special preparation. Therefore, for every service yaml created in the previous step, run kube-inject:
@@ -151,7 +151,7 @@ To reach the services, at least one of them must be made available using a local
 
 should now return 
 
-TOOD 
+TODO 
 
 ### Calling the Mesh of Services
 
@@ -166,8 +166,8 @@ Every reachable service can be used as a starting point. For the sake of simplic
 | `http://localhost:8080/@service1/@service2/@service3/` | call chain: localhost -> service1 -> service2 -> service3 (all using port 8080)|
 | `http://localhost:8080/@service1/service2` | call chain: localhost -> service1 (no '@' before 'service2' |
 | `http://localhost:8080/@service1,service2/uri-reuse/` | service at localhost calls first service1, then service2, both with URI /uri-reuse/ |
-| `http://localhost:8080/@service1|service2/uri-reuse/` | service at localhost calls service1 and service2 in parallel, both with URI /uri-reuse/ |
-| `http://localhost:8080/@service1|service2/@service3|service4/uri/` | service at localhost calls service1 and service2 in parallel, both call service3 and service4 in parallel |
+| `http://localhost:8080/@service1\|service2/uri-reuse/` | service at localhost calls service1 and service2 in parallel, both with URI /uri-reuse/ |
+| `http://localhost:8080/@service1\|service2/@service3\|service4/uri/` | service at localhost calls service1 and service2 in parallel, both call service3 and service4 in parallel |
 
 ## Take it away, Istio..
 
