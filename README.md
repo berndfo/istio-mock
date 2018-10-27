@@ -1,4 +1,4 @@
-# Run mock services to create a service mesh
+# Run mock services to explore a service mesh
 
 [Istio](istio.io) helps with meshing services on Kubernetes.
 This tiny project provides a mock service called `mockserver` you can deploy multiple times to test it out. Using `mockserver`, you can create cascades of service calls easily just by typing an URL. The server is bundles as a Docker Container as [`brainlounge/servicemock`](https://hub.docker.com/r/brainlounge/servicemock/).
