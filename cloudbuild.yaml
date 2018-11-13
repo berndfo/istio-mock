@@ -1,5 +1,3 @@
 steps:
 - name: 'gcr.io/cloud-builders/go'
-  args: ['install', '.']
-- name: 'gcr.io/cloud-builders/go'
   args: ['build', 'src/mockserver.go']
