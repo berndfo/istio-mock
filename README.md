@@ -65,11 +65,13 @@ Now we get to the interesting part. It shows how to create a set of services and
 
 ### Acquire a Kubernetes cluster on Google Cloud
 
-Launching cluster on Google Kubernetes Engine, but any Kubernetes cluster is sufficient.
+Launching cluster on Google Kubernetes Engine, but any Kubernetes cluster is sufficient. 
 
-On GKE, when the cluster is ready, fetch credentials, which needs the gcloud command line tool
+In the following code we use `mock-1` as cluster and as namespace name, please replace with any cooler name you can come up with. 
 
-` gcloud container clusters get-credentials mock-1 --region europe-west3-b `
+On GKE, when the cluster is ready, fetch credentials, which utilizes the [gcloud command line tool](https://cloud.google.com/sdk/gcloud/)
+
+` gcloud container clusters get-credentials mock-1 --region europe-west3-b ` (assuming cluster running in europe, your's might vary)
 
 Grant local user full cluster access on the cluster:
 
@@ -79,7 +81,7 @@ Grant local user full cluster access on the cluster:
 
 [Download and install Istio](https://istio.io/docs/setup/kubernetes/download-release/).
 
-After extraction, change into the Istio base directory, then deploy Istio into your Kubernetes cluster:
+After extraction, change into the Istio base directory you just created, then deploy Istio into your Kubernetes cluster:
 
 ` cd install/kubernetes `
 
