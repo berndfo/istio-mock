@@ -15,7 +15,7 @@ You should have basic understanding of the following technologies:
 
 ## Build from scratch
 
-Please skip this section, if you simply want to run the mock service only on Kubernetes and Istio, and don't want to build or run the service locally.
+Please skip this section, if you simply want to run the mock service only on Kubernetes and Istio, and don't want to build the service nor run it locally.
 
 ### Run locally (no Docker, no Kubernetes) 
 
