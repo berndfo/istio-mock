@@ -244,6 +244,32 @@ func executeSequentialForwards(sequentialForwards []string, idxParallel int, uri
 }
 
 func executeForward(forwardService string, uriRemainder string, indexDisplay string) (forwardInfo ForwardInfo) {
+
+	customHeaders := make(map[string]string)
+	customHeadersLogInfo := "with custom headers "
+	// check for header parameters. headers start are wrapped by square brackets [].
+	if strings.Contains(forwardService, "[") {
+		serviceAllHeadersSplit := strings.Split(forwardService, "[")
+		forwardService = serviceAllHeadersSplit[0]
+		serviceAllHeadersSplit = serviceAllHeadersSplit[1:]
+		for _, headerString := range serviceAllHeadersSplit {
+			if !strings.HasSuffix(headerString, "]") {
+				log.Printf("syntax error: header does not end with ']': %q", headerString)
+				return
+			}
+			if !strings.Contains(headerString, "=") {
+				log.Printf("syntax error: header does separate name, value by '=': %q", headerString)
+				return
+			}
+			headerSplit := strings.SplitN(headerString, "=", 2)
+			name := headerSplit[0]
+			value := headerSplit[1][:len(headerSplit[1])-1]
+			//log.Printf("header detected: %q=%q", name, value)
+			customHeaders[name] = value
+			customHeadersLogInfo += "'" + name + "' "
+		}
+	}
+	
 	if !strings.Contains(forwardService, ":") {
 		forwardService = forwardService + ":8080"
 	}
@@ -252,15 +278,28 @@ func executeForward(forwardService string, uriRemainder string, indexDisplay str
 	}
 	forwardUrl := "http://" + forwardService + uriRemainder
 	forwardInfo.Url = forwardUrl
-	log.Printf("calling %s. service %q, url %q", indexDisplay, forwardService, forwardUrl)
+	log.Printf("calling %s. service %q, url %q %s", indexDisplay, forwardService, forwardUrl, customHeadersLogInfo)
 	defer func() {
 		if r := recover(); r != nil {
-			panicMsg := fmt.Sprintf("calling %s. service %q failed with panic, url %q", indexDisplay, forwardService, forwardUrl)
+			panicMsg := fmt.Sprintf("calling %s. service %q failed with panic, url %q %s", indexDisplay, forwardService, forwardUrl, customHeadersLogInfo)
 			forwardInfo.Result = panicMsg
 			log.Printf(panicMsg)
 		}
 	}()
-	resp, err := http.Get(forwardUrl)
+	
+	request, err := http.NewRequest("GET", forwardUrl, http.NoBody)
+	if err != nil {
+		errMsg := fmt.Sprintf("failed to create new request object for %q, %q", forwardUrl, err)
+		log.Printf(errMsg)
+		forwardInfo.Result = errMsg
+	}
+	if (len(customHeaders) > 0) {
+		for key, value := range customHeaders {
+			request.Header.Add(key, value)
+		}
+	}
+
+	resp, err := http.DefaultClient.Do(request)
 	if err != nil {
 		errMsg := fmt.Sprintf("failure calling service %q, %q", forwardUrl, err)
 		log.Printf(errMsg)

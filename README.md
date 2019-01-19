@@ -38,7 +38,9 @@ Locally, you can run multiple service instances by changing the listen port numb
 
 ` mv mockserver docker/ `
 
-` sudo docker build docker -t brainlounge/servicemock -t gcr.io/thelounge-lab/servicemock `
+git rev-parse HEAD
+
+`sudo docker build docker -t brainlounge/servicemock:rev-$(git rev-parse HEAD) -t gcr.io/thelounge-lab/servicemock:rev-$(git rev-parse HEAD) `
 
 ### Push to remote repository
 
@@ -160,6 +162,11 @@ TODO
 Services can now be called chained, in parallel or in sequence. Services can even call themselves.
 Every reachable service can be used as a starting point. For the sake of simplicity, we assume the starting point is always reached at `localhost:8080` but it can be any other address where a mockserver is listening.
 
+All calls are made using GET requests.
+
+#### Basics of calling services in sequence and in parallel
+
+
 | URL | effect |
 |---|---|
 | `http://localhost:8080/service/calls/@service3/` | first service (reached at localhost:8080) is called, but nothing else happens (reason: no '@' directly after 'localhost:8080/' |
@@ -170,6 +177,17 @@ Every reachable service can be used as a starting point. For the sake of simplic
 | `http://localhost:8080/@service1,service2/uri-reuse/` | service at localhost calls first service1, then service2, both with URI /uri-reuse/ |
 | `http://localhost:8080/@service1\|service2/uri-reuse/` | service at localhost calls service1 and service2 in parallel, both with URI /uri-reuse/ |
 | `http://localhost:8080/@service1\|service2/@service3\|service4/uri/` | service at localhost calls service1 and service2 in parallel, both call service3 and service4 in parallel |
+
+#### Adding custom headers
+
+Custom headers can be added to each call using the syntax `[name=value]`. Multiple headers can be added by repeating this expression as needed: `[name1=value1][name2=value2]`. The header expression needs to follow directly the service name (or port).  
+
+Note: Currently, header names and values _must not_ contain any of the characters `/`, `|` or `,`. This is a known limitation and unfortunately prohibits HTTP headers like `accept: image/jpg`.  
+
+| URL | effect |
+|---|---|
+| `http://localhost:8080/@service1[name1=value1]/@service2[name2=value2]/` | service at localhost calls first service1 at port 8080 with added Header `name1: value1`, then service1 itself calls service2 at port 8080 with added Header `name2: value2` |
+| `http://localhost:8080/@service1/@service2:8081[name2=value2][name3=value3]/` | service at localhost calls first service1 with adding custom headers, then service1 itself calls service2 at port 8081 with added Headers `name2: value2` and `name3: value3` |
 
 ## Take it away, Istio..
 
