@@ -38,8 +38,6 @@ Locally, you can run multiple service instances by changing the listen port numb
 
 ` mv mockserver docker/ `
 
-git rev-parse HEAD
-
 `sudo docker build docker -t brainlounge/servicemock:rev-$(git rev-parse HEAD) -t gcr.io/thelounge-lab/servicemock:rev-$(git rev-parse HEAD) `
 
 ### Push to remote repository
