@@ -70,6 +70,12 @@ func (h *allHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("request received with URI %q", uri)
 
+	/*
+	// log request headers
+	for key, value := range r.Header {
+		log.Printf("| req header %q:%q", key, value)
+	}*/
+	
 	if uri == "/health" {
 		w.WriteHeader(http.StatusOK)
 		return
